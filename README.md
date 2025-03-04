@@ -67,3 +67,6 @@ bash setup_onlyoffice.sh \
 - SQLite wird als Datenbank genutzt, kein externer DB-Server nötig.
 - Der Container wird unprivilegiert erstellt.
 - Systemd-Fix für LXC ist integriert.
+
+
+Kompett erstellt mit ChatGPT

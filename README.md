@@ -58,7 +58,7 @@ bash setup_onlyoffice.sh \
 Falls du das Skript direkt auf deinem Proxmox-Host ausführen willst, kannst du diesen Befehl nutzen:
 
 ```bash
-wget -qO /root/setup_onlyoffice.sh https://raw.githubusercontent.com/Elektrofussel/onlyoffice-setup/main/setup_onlyoffice.sh && chmod +x /root/setup_onlyoffice.sh
+wget -qO /root/setup_onlyoffice.sh https://raw.githubusercontent.com/Elektrofussel/onlyoffice-setup/main/setup_onlyoffice.sh && chmod +x && /root/setup_onlyoffice.sh
 ```
 
 ---

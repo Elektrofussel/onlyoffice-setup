@@ -53,6 +53,15 @@ bash setup_onlyoffice.sh \
 
 ---
 
+## Installation direkt von GitHub
+
+Falls du das Skript direkt auf deinem Proxmox-Host ausführen willst, kannst du diesen Befehl nutzen:
+
+```bash
+wget -qO /root/setup_onlyoffice.sh https://raw.githubusercontent.com/Elektrofussel/onlyoffice-setup/main/setup_onlyoffice.sh && chmod +x /root/setup_onlyoffice.sh
+
+---
+
 ## Voraussetzungen
 
 - Proxmox VE 7/8

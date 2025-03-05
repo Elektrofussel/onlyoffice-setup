@@ -44,10 +44,8 @@ fi
 # Vorbereitung: Template-Pfad & Netzwerkkonfiguration
 #############################################
 
-# Vollständiger Template-Pfad (anpassen, falls nötig)
 TEMPLATE_FULL="/mnt/pve/${TEMPLATE_STORAGE}/template/cache/${TEMPLATE_PATH}"
 
-# Netzwerkkonfiguration zusammensetzen
 NET_CONFIG="name=eth0,bridge=vmbr0"
 if [[ "$IPV4_MODE" == "static" ]]; then
     NET_CONFIG="$NET_CONFIG,ip=$IPV4_ADDR,gw=$IPV4_GW"
@@ -86,7 +84,7 @@ pct create "$CT_ID" "$TEMPLATE_FULL" \
     --features "nesting=1" \
     --ostype "debian"
 
-# Systemd‑Fix in der Container-Konfiguration hinzufügen
+# Systemd-Fix in der Container-Konfiguration hinzufügen
 cat <<EOF >> "/etc/pve/lxc/$CT_ID.conf"
 lxc.apparmor.profile: unconfined
 lxc.cgroup.devices.allow: a
@@ -137,7 +135,7 @@ EOJSON
 
 #############################################
 # OnlyOffice Document Server Installation
-# mit Fallback-Kette
+# ohne Repo, mit Fallback-Kette
 #############################################
 
 echo "💾 Installiere OnlyOffice Document Server (Versuch 1)"
@@ -146,11 +144,8 @@ export LANG=en_US.UTF-8; \
 export ONLYOFFICE_DB_TYPE=sqlite; \
 apt-get update && \
 apt-get install -y gnupg2 wget apt-transport-https ca-certificates jq && \
-wget -qO - https://download.onlyoffice.com/repo/onlyoffice.key | gpg --dearmor > /usr/share/keyrings/onlyoffice-keyring.gpg || \
-(apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 8320CA65CB2DE8E5); \
-echo 'deb [signed-by=/usr/share/keyrings/onlyoffice-keyring.gpg trusted=yes] https://download.onlyoffice.com/repo/debian/ bullseye main' > /etc/apt/sources.list.d/onlyoffice.list; \
-apt-get update; \
-DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver
+wget -qO /tmp/onlyoffice-documentserver.deb 'https://download.onlyoffice.com/install/onlyoffice-documentserver_amd64.deb' && \
+dpkg -i /tmp/onlyoffice-documentserver.deb || apt-get -y --fix-broken install
 "; then
     echo "✅ OnlyOffice Document Server installiert (Versuch 1 erfolgreich)."
 else
@@ -170,7 +165,7 @@ fi"
     pct exec "$CT_ID" -- bash -c "dpkg --configure -a"
     if pct exec "$CT_ID" -- bash -c "\
 export LANG=en_US.UTF-8; \
-DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver
+DEBIAN_FRONTEND=noninteractive apt-get install -y /tmp/onlyoffice-documentserver.deb
 "; then
         echo "✅ OnlyOffice Document Server installiert (Fallback 1 erfolgreich)."
     else
@@ -180,7 +175,7 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver
         echo "⚠️ Fallback 2: Installiere Dummy-PostgreSQL und versuche erneut..."
         pct exec "$CT_ID" -- bash -c "apt-get install -y postgresql"
         pct exec "$CT_ID" -- bash -c "dpkg --configure -a"
-        pct exec "$CT_ID" -- bash -c "DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver"
+        pct exec "$CT_ID" -- bash -c "DEBIAN_FRONTEND=noninteractive apt-get install -y /tmp/onlyoffice-documentserver.deb"
         pct exec "$CT_ID" -- bash -c "apt-get purge --auto-remove postgresql -y"
     fi
 fi

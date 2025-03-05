@@ -1,82 +1,38 @@
-# OnlyOffice LXC Setup Script
+# OnlyOffice Setup für Proxmox
 
-Dieses Skript erstellt einen unprivilegierten LXC-Container auf Proxmox VE und installiert darin den OnlyOffice DocumentServer. Die Konfiguration erfolgt direkt über Parameter, sodass das Skript flexibel für verschiedene Setups verwendet werden kann.
+Dieses Skript erstellt einen unprivilegierten Debian 12 LXC-Container, setzt die Netzwerkkonfiguration und installiert OnlyOffice Document Server.
 
-## Features
-
-✅ Unprivilegierter LXC (sicherer Betrieb)  
-✅ Direct-Install mit Debian 12 Template  
-✅ Flexible Netzwerk-Konfiguration (IPv4/IPv6, DHCP oder statisch)  
-✅ Firewall-Regel direkt integriert (nur Nextcloud darf zugreifen)  
-✅ Vollautomatische Installation ohne Interaktivität  
-✅ Unterstützung für SQLite als Datenbank (kein PostgreSQL nötig)
-
----
-
-## Parameter
-
-| Parameter | Beschreibung | Beispiel |
-|---|---|---|
-| `--ct-name` | Name des Containers (Hostname) | `OnlyOfficeServer` |
-| `--ipv4-mode` | `static` oder `dhcp` | `static` |
-| `--ipv4-addr` | IPv4-Adresse inkl. Subnetz | `192.168.2.206/24` |
-| `--ipv4-gw` | IPv4-Gateway | `192.168.2.1` |
-| `--ipv6-mode` | `static`, `dhcp` oder `none` | `dhcp` |
-| `--ipv6-addr` | IPv6-Adresse inkl. Subnetz (nur bei static) | `fd00::206/64` |
-| `--ipv6-gw` | IPv6-Gateway (nur bei static) | `fd00::1` |
-| `--template-storage` | Name des Storage mit Template | `MediumPlate` |
-| `--template-path` | Pfad zum Template (falls vorhanden) | `vztmpl/debian-12-standard_12.7-1_amd64.tar.zst` |
-
----
-
-## Beispielaufruf
+## 📥 Installation
 
 ```bash
-bash setup_onlyoffice.sh \
-    --ct-name "OnlyOfficeServer" \
-    --ipv4-mode "static" \
-    --ipv4-addr "192.168.2.206/24" \
-    --ipv4-gw "192.168.2.1" \
-    --ipv6-mode "dhcp" \
-    --template-storage "MediumPlate" \
-    --template-path "vztmpl/debian-12-standard_12.7-1_amd64.tar.zst"
+wget -qO setup_onlyoffice.sh https://raw.githubusercontent.com/Elektrofussel/onlyoffice-setup/main/setup_onlyoffice.sh && chmod +x setup_onlyoffice.sh && ./setup_onlyoffice.sh
 ```
 
----
+## ⚙️ Ablauf
 
-## Nutzung
+1. Abfragen von:
+   - Container-Name
+   - Template Storage & Path
+   - IPv4/IPv6 Konfiguration
+2. Löschen eines bestehenden Containers (falls vorhanden)
+3. Anlegen & Starten des neuen Containers
+4. Setzen der Locale im Container
+5. Hinzufügen des OnlyOffice Repos
+6. Installation des Document Servers
 
-1. Skript herunterladen oder aus dem Repo klonen.
-2. Parameter anpassen (siehe Tabelle).
-3. Skript ausführen.
-4. In Nextcloud die `/etc/hosts` anpassen und OnlyOffice-App konfigurieren.
+## 📋 Voraussetzungen
 
----
+- Proxmox 7/8
+- Debian 12 Template im angegebenen Storage vorhanden
+- Internetzugang für apt & wget
 
-## Installation direkt von GitHub
+## 📝 Beispiel
 
-Falls du das Skript direkt auf deinem Proxmox-Host ausführen willst, kannst du diesen Befehl nutzen:
-
-```bash
-wget -qO /root/setup_onlyoffice.sh https://raw.githubusercontent.com/Elektrofussel/onlyoffice-setup/main/setup_onlyoffice.sh && chmod +x /root/setup_onlyoffice.sh && /root/setup_onlyoffice.sh
+```
+Container Name: OnlyOfficeServer
+Template Storage: MediumPlate
+Template Path: vztmpl/debian-12-standard_12.7-1_amd64.tar.zst
+IPv4: static 192.168.2.206/24 mit Gateway 192.168.2.1
+IPv6: dhcp
 ```
 
----
-
-## Voraussetzungen
-
-- Proxmox VE 7/8
-- Debian 12 Template im angegebenen Storage
-- Nextcloud mit OnlyOffice App installiert
-- IP-Konzept für den Container vorhanden
-
----
-
-## Hinweise
-
-- SQLite wird als Datenbank genutzt, kein externer DB-Server nötig.
-- Der Container wird unprivilegiert erstellt.
-- Systemd-Fix für LXC ist integriert.
-
-
-Kompett erstellt mit ChatGPT

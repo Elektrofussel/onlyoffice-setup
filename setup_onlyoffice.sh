@@ -2,60 +2,67 @@
 
 set -e
 
-# Parameter einlesen
-while [[ "$#" -gt 0 ]]; do
-    case $1 in
-        --ct-name) CT_NAME="$2"; shift ;;
-        --ipv4-mode) IPV4_MODE="$2"; shift ;;
-        --ipv4-addr) IPV4_ADDR="$2"; shift ;;
-        --ipv4-gw) IPV4_GW="$2"; shift ;;
-        --ipv6-mode) IPV6_MODE="$2"; shift ;;
-        --ipv6-addr) IPV6_ADDR="$2"; shift ;;
-        --ipv6-gw) IPV6_GW="$2"; shift ;;
-        --template-storage) TEMPLATE_STORAGE="$2"; shift ;;
-        --template-path) TEMPLATE_PATH="$2"; shift ;;
-        *) echo "Unbekannter Parameter: $1"; exit 1 ;;
-    esac
-    shift
-done
+echo "🚀 OnlyOffice Setup - Proxmox LXC"
 
-# Validierung
-if [ -z "$CT_NAME" ] || [ -z "$TEMPLATE_STORAGE" ] || [ -z "$TEMPLATE_PATH" ]; then
-    echo "Fehler: Name, Template Storage und Template Path sind Pflicht!"
+read -p "Container Name (z. B. OnlyOfficeServer): " CT_NAME
+read -p "Template Storage (z. B. MediumPlate): " TEMPLATE_STORAGE
+read -p "Template Path (z. B. vztmpl/debian-12-standard_12.7-1_amd64.tar.zst): " TEMPLATE_PATH
+
+read -p "IPv4 Modus (static/dhcp): " IPV4_MODE
+if [[ "$IPV4_MODE" == "static" ]]; then
+    read -p "IPv4 Adresse (z. B. 192.168.2.206/24): " IPV4_ADDR
+    read -p "IPv4 Gateway (z. B. 192.168.2.1): " IPV4_GW
+else
+    IPV4_ADDR=""
+    IPV4_GW=""
+fi
+
+read -p "IPv6 Modus (static/dhcp/none): " IPV6_MODE
+if [[ "$IPV6_MODE" == "static" ]]; then
+    read -p "IPv6 Adresse (optional): " IPV6_ADDR
+    read -p "IPv6 Gateway (optional): " IPV6_GW
+else
+    IPV6_ADDR=""
+    IPV6_GW=""
+fi
+
+if [[ -z "$CT_NAME" || -z "$TEMPLATE_STORAGE" || -z "$TEMPLATE_PATH" ]]; then
+    echo "❌ Fehler: Name, Template Storage und Template Path sind Pflicht!"
     exit 1
 fi
 
-# Netzwerkkonfiguration
-NET_CONFIG=""
-if [ "$IPV4_MODE" = "dhcp" ]; then
-    NET_CONFIG="ip=dhcp"
-else
-    NET_CONFIG="ip=$IPV4_ADDR,gw=$IPV4_GW"
-fi
+echo "📦 Lösche bestehenden Container (falls vorhanden)..."
+pct stop $CT_NAME || true
+pct destroy $CT_NAME || true
 
-if [ "$IPV6_MODE" = "dhcp" ]; then
-    NET_CONFIG="$NET_CONFIG,ip6=dhcp"
-elif [ "$IPV6_MODE" = "static" ]; then
-    NET_CONFIG="$NET_CONFIG,ip6=$IPV6_ADDR,gw6=$IPV6_GW"
-fi
+echo "📦 Erstelle neuen Container: $CT_NAME"
+pct create 999 "/mnt/pve/${TEMPLATE_STORAGE}/template/cache/${TEMPLATE_PATH}"     --arch amd64     --cores 2     --memory 4096     --swap 1024     --unprivileged 1     --net0 "name=eth0,bridge=vmbr0,ip${IPV4_MODE}=${IPV4_ADDR},gw=${IPV4_GW},ip6=${IPV6_MODE},ip6addr=${IPV6_ADDR},ip6gw=${IPV6_GW}"     --hostname "onlyoffice"     --storage "local-lvm"     --features "nesting=1"     --ostype "debian"
 
-# Container erstellen
-pct create 206 $TEMPLATE_STORAGE:$TEMPLATE_PATH \
-    -hostname $CT_NAME \
-    -memory 4096 \
-    -swap 512 \
-    -cores 2 \
-    -net0 name=eth0,bridge=vmbr0,$NET_CONFIG \
-    -storage local-lvm \
-    -features nesting=1 \
-    -unprivileged 1
+pct start 999
+sleep 10
 
-# Systemd-Fix in Config schreiben
-cat <<EOF >> /etc/pve/lxc/206.conf
-lxc.apparmor.profile: unconfined
-lxc.cgroup.devices.allow: a
-lxc.cap.drop:
-EOF
+echo "🌍 Setze Locale im Container"
+pct exec 999 -- bash -c "
+apt-get update
+apt-get install -y locales
+echo 'en_US.UTF-8 UTF-8' > /etc/locale.gen
+locale-gen
+update-locale LANG=en_US.UTF-8
+echo 'export LANG=en_US.UTF-8' >> /etc/profile
+echo 'export LANG=en_US.UTF-8' >> /root/.bashrc
+"
 
-# Rest (Installation etc.) bleibt wie gehabt - hier kann dein ursprünglicher Code weiterlaufen
-echo "Container erstellt mit Hostname $CT_NAME"
+echo "💾 Installiere OnlyOffice Document Server"
+pct exec 999 -- bash -c "
+export LANG=en_US.UTF-8
+apt-get update
+apt-get install -y gnupg2 wget apt-transport-https ca-certificates
+
+wget -qO - https://download.onlyoffice.com/repo/onlyoffice.key | gpg --dearmor > /usr/share/keyrings/onlyoffice-keyring.gpg
+echo 'deb [signed-by=/usr/share/keyrings/onlyoffice-keyring.gpg] https://download.onlyoffice.com/repo/debian squeeze main' > /etc/apt/sources.list.d/onlyoffice.list
+
+apt-get update
+apt-get install -y onlyoffice-documentserver
+"
+
+echo "✅ Installation abgeschlossen!"

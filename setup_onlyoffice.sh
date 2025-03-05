@@ -26,7 +26,7 @@ if [[ "$IPV6_MODE" == "static" ]]; then
     read -p "IPv6 Gateway (z. B. fe80::1): " IPV6_GW
 fi
 
-read -p "Rootfs Größe in GB (z. B. 50): " ROOTFS_SIZE
+read -p "Rootfs Größe in GB (z. B. 8): " ROOTFS_SIZE
 if [[ -z "$ROOTFS_SIZE" ]]; then
     ROOTFS_SIZE=50
 fi
@@ -37,7 +37,7 @@ if [[ -z "$CT_ID" || -z "$CT_NAME" || -z "$TEMPLATE_STORAGE" || -z "$TEMPLATE_PA
     exit 1
 fi
 
-# Vollständiger Template-Pfad (an deine Umgebung anpassen, falls nötig)
+# Vollständiger Template-Pfad (bitte ggf. an deine Umgebung anpassen)
 TEMPLATE_FULL="/mnt/pve/${TEMPLATE_STORAGE}/template/cache/${TEMPLATE_PATH}"
 
 # Netzwerkkonfiguration zusammensetzen
@@ -73,7 +73,7 @@ pct create $CT_ID "$TEMPLATE_FULL" \
     --features "nesting=1" \
     --ostype "debian"
 
-# Systemd-Fix in LXC-Konfiguration einfügen
+# Füge den systemd-Fix in die LXC-Konfiguration ein
 cat <<EOF >> /etc/pve/lxc/$CT_ID.conf
 lxc.apparmor.profile: unconfined
 lxc.cgroup.devices.allow: a
@@ -83,7 +83,7 @@ EOF
 pct start $CT_ID
 sleep 10
 
-# --- Locale setzen (inkl. Export in aktuelle Shell) ---
+# --- Locale setzen ---
 echo "🌍 Setze Locale im Container"
 pct exec $CT_ID -- bash -c "\
 apt-get update && \
@@ -96,23 +96,43 @@ echo 'export LANG=en_US.UTF-8' >> /etc/profile && \
 echo 'export LANG=en_US.UTF-8' >> /root/.bashrc
 "
 
+# --- Vorab OnlyOffice-Konfiguration mit SQLite erzeugen ---
+echo "🛠️ Erzeuge OnlyOffice-Konfiguration (SQLite) vor der Installation"
+pct exec $CT_ID -- bash -c "\
+mkdir -p /etc/onlyoffice/documentserver && \
+cat <<EOF > /etc/onlyoffice/documentserver/local.json
+{
+    \"services\": {
+        \"CoAuthoring\": {
+            \"sql\": {
+                \"type\": \"sqlite\"
+            },
+            \"secret\": {
+                \"inbox\": { \"string\": \"\" },
+                \"outbox\": { \"string\": \"\" },
+                \"session\": { \"string\": \"\" }
+            }
+        }
+    }
+}
+EOF
+"
+
 # --- OnlyOffice Document Server installieren ---
 echo "💾 Installiere OnlyOffice Document Server"
 pct exec $CT_ID -- bash -c "\
 export LANG=en_US.UTF-8 && \
 apt-get update && \
-apt-get remove --purge postgresql* -y || true && \
-apt-get install -y gnupg2 wget apt-transport-https ca-certificates && \
+apt-get install -y gnupg2 wget apt-transport-https ca-certificates jq && \
 wget -qO - https://download.onlyoffice.com/repo/onlyoffice.key | gpg --dearmor > /usr/share/keyrings/onlyoffice-keyring.gpg || \
 (apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 8320CA65CB2DE8E5) && \
 echo 'deb [signed-by=/usr/share/keyrings/onlyoffice-keyring.gpg trusted=yes] https://download.onlyoffice.com/repo/debian squeeze main' > /etc/apt/sources.list.d/onlyoffice.list && \
 apt-get update && \
-DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver || true && \
-dpkg --configure -a || true
+DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver
 "
 
-# --- OnlyOffice-Konfiguration mit SQLite erzwingen ---
-echo "🛠️ Setze OnlyOffice-Konfiguration auf SQLite"
+# --- OnlyOffice-Konfiguration erneut überschreiben, um SQLite sicherzustellen ---
+echo "🛠️ Überschreibe OnlyOffice-Konfiguration (SQLite)"
 pct exec $CT_ID -- bash -c "\
 export LANG=en_US.UTF-8 && \
 cat <<EOF > /etc/onlyoffice/documentserver/local.json
@@ -133,7 +153,7 @@ cat <<EOF > /etc/onlyoffice/documentserver/local.json
 EOF
 "
 
-# --- API-Key generieren und in die Konfiguration eintragen ---
+# --- API-Key generieren und eintragen ---
 API_KEY=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)
 pct exec $CT_ID -- bash -c "\
 export LANG=en_US.UTF-8 && \
@@ -148,7 +168,7 @@ else \
 fi
 "
 
-# --- API-Key in der Konsole ausgeben und in Datei speichern ---
+# --- API-Key ausgeben und speichern ---
 echo "🔑 Der generierte API-Key lautet:"
 echo "$API_KEY"
 echo "$API_KEY" > /root/API_KEY.txt

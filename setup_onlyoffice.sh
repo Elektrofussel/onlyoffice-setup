@@ -34,20 +34,12 @@ if [[ -z "$ROOTFS_SIZE" ]]; then
     ROOTFS_SIZE=50
 fi
 
-# Pflichtfelder prüfen
-if [[ -z "$CT_ID" || -z "$CT_NAME" || -z "$TEMPLATE_STORAGE" || -z "$TEMPLATE_PATH" ]]; then
-    echo "❌ Fehler: Container ID, Container Name, Template Storage und Template Path sind Pflicht!"
-    exit 1
-fi
-
 #############################################
 # Vorbereitung: Template-Pfad & Netzwerkkonfiguration
 #############################################
 
-# Vollständiger Template-Pfad (anpassen, falls nötig)
 TEMPLATE_FULL="/mnt/pve/${TEMPLATE_STORAGE}/template/cache/${TEMPLATE_PATH}"
 
-# Netzwerkkonfiguration zusammensetzen
 NET_CONFIG="name=eth0,bridge=vmbr0"
 if [[ "$IPV4_MODE" == "static" ]]; then
     NET_CONFIG="$NET_CONFIG,ip=$IPV4_ADDR,gw=$IPV4_GW"
@@ -86,7 +78,6 @@ pct create $CT_ID "$TEMPLATE_FULL" \
     --features "nesting=1" \
     --ostype "debian"
 
-# Systemd‑Fix in der Container-Konfiguration hinzufügen
 cat <<EOF >> /etc/pve/lxc/$CT_ID.conf
 lxc.apparmor.profile: unconfined
 lxc.cgroup.devices.allow: a
@@ -113,7 +104,7 @@ echo 'export LANG=en_US.UTF-8' >> /root/.bashrc
 "
 
 #############################################
-# Vorab-Konfiguration von OnlyOffice (SQLite)
+# Vorab OnlyOffice-Konfiguration (SQLite) erzeugen
 #############################################
 
 echo "🛠️ Erzeuge OnlyOffice-Konfiguration (SQLite) vor der Installation"
@@ -140,7 +131,7 @@ EOF
 #############################################
 
 echo "💾 Installiere OnlyOffice Document Server (Versuch 1)"
-if ! pct exec $CT_ID -- bash -c "\
+if pct exec $CT_ID -- bash -c "\
 export LANG=en_US.UTF-8; \
 export ONLYOFFICE_DB_TYPE=sqlite; \
 apt-get update && \
@@ -175,12 +166,18 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver
          # Fallback 2: Dummy-PostgreSQL installieren
          #############################################
          echo "⚠️ Fallback 2: Installiere Dummy-PostgreSQL und versuche erneut..."
-         pct exec $CT_ID -- bash -c "apt-get install -y postgresql"
+         pct exec $CT_ID -- bash -c "apt-get install -y postgresql" 
          pct exec $CT_ID -- bash -c "dpkg --configure -a"
          pct exec $CT_ID -- bash -c "DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver"
          pct exec $CT_ID -- bash -c "apt-get purge --auto-remove postgresql -y"
     fi
 fi
+
+#############################################
+# Fallback 3: Erzwinge dpkg-Konfiguration (falls nötig)
+#############################################
+echo "⚠️ Fallback 3: Erzwinge dpkg-Konfiguration..."
+pct exec $CT_ID -- bash -c "dpkg --force-all --configure onlyoffice-documentserver"
 
 #############################################
 # OnlyOffice-Konfiguration erneut überschreiben (SQLite)

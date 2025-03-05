@@ -3,7 +3,10 @@ set -e
 
 echo "🚀 OnlyOffice Setup - Proxmox LXC"
 
-# --- Interaktive Abfrage der Parameter ---
+#############################################
+# Interaktive Abfrage der Parameter
+#############################################
+
 read -p "Container ID (z. B. 100): " CT_ID
 if ! [[ "$CT_ID" =~ ^[0-9]+$ ]]; then
     echo "❌ Fehler: Container ID muss eine Zahl sein!"
@@ -37,7 +40,11 @@ if [[ -z "$CT_ID" || -z "$CT_NAME" || -z "$TEMPLATE_STORAGE" || -z "$TEMPLATE_PA
     exit 1
 fi
 
-# Vollständiger Template-Pfad
+#############################################
+# Vorbereitung: Template-Pfad & Netzwerkkonfiguration
+#############################################
+
+# Vollständiger Template-Pfad (anpassen, falls nötig)
 TEMPLATE_FULL="/mnt/pve/${TEMPLATE_STORAGE}/template/cache/${TEMPLATE_PATH}"
 
 # Netzwerkkonfiguration zusammensetzen
@@ -53,12 +60,18 @@ elif [[ "$IPV6_MODE" == "dhcp" ]]; then
     NET_CONFIG="$NET_CONFIG,ip6=dhcp"
 fi
 
-# --- Alten Container löschen, falls vorhanden ---
+#############################################
+# Alten Container löschen, falls vorhanden
+#############################################
+
 echo "📦 Lösche bestehenden Container (falls vorhanden)..."
 pct stop $CT_ID || true
 pct destroy $CT_ID || true
 
-# --- Neuen Container erstellen ---
+#############################################
+# Neuen Container erstellen
+#############################################
+
 echo "📦 Erstelle neuen Container: $CT_NAME (ID: $CT_ID)"
 pct create $CT_ID "$TEMPLATE_FULL" \
     --arch amd64 \
@@ -73,7 +86,7 @@ pct create $CT_ID "$TEMPLATE_FULL" \
     --features "nesting=1" \
     --ostype "debian"
 
-# Systemd-Fix in LXC-Konfiguration einfügen
+# Systemd‑Fix in der Container-Konfiguration hinzufügen
 cat <<EOF >> /etc/pve/lxc/$CT_ID.conf
 lxc.apparmor.profile: unconfined
 lxc.cgroup.devices.allow: a
@@ -83,7 +96,10 @@ EOF
 pct start $CT_ID
 sleep 10
 
-# --- Locale setzen ---
+#############################################
+# Locale setzen im Container
+#############################################
+
 echo "🌍 Setze Locale im Container"
 pct exec $CT_ID -- bash -c "\
 apt-get update && \
@@ -96,7 +112,10 @@ echo 'export LANG=en_US.UTF-8' >> /etc/profile && \
 echo 'export LANG=en_US.UTF-8' >> /root/.bashrc
 "
 
-# --- Vorab OnlyOffice-Konfiguration (SQLite) erzeugen ---
+#############################################
+# Vorab-Konfiguration von OnlyOffice (SQLite)
+#############################################
+
 echo "🛠️ Erzeuge OnlyOffice-Konfiguration (SQLite) vor der Installation"
 pct exec $CT_ID -- bash -c "\
 mkdir -p /etc/onlyoffice/documentserver && \
@@ -116,14 +135,17 @@ cat <<EOF > /etc/onlyoffice/documentserver/local.json
 EOF
 "
 
-# --- Installation OnlyOffice Document Server mit Fallback-Kette ---
+#############################################
+# OnlyOffice Document Server Installation mit Fallback-Kette
+#############################################
+
 echo "💾 Installiere OnlyOffice Document Server (Versuch 1)"
 if ! pct exec $CT_ID -- bash -c "\
 export LANG=en_US.UTF-8; \
 export ONLYOFFICE_DB_TYPE=sqlite; \
 apt-get update && \
 apt-get install -y gnupg2 wget apt-transport-https ca-certificates jq && \
-( wget -qO - https://download.onlyoffice.com/repo/onlyoffice.key | gpg --dearmor > /usr/share/keyrings/onlyoffice-keyring.gpg ) || \
+wget -qO - https://download.onlyoffice.com/repo/onlyoffice.key | gpg --dearmor > /usr/share/keyrings/onlyoffice-keyring.gpg || \
 (apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 8320CA65CB2DE8E5); \
 echo 'deb [signed-by=/usr/share/keyrings/onlyoffice-keyring.gpg trusted=yes] https://download.onlyoffice.com/repo/debian squeeze main' > /etc/apt/sources.list.d/onlyoffice.list; \
 apt-get update; \
@@ -132,7 +154,11 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver
     echo "✅ OnlyOffice Document Server installiert (Versuch 1 erfolgreich)."
 else
     echo "⚠️ Installationsversuch 1 fehlgeschlagen: Post-Installationsskript verweigert die Datenbankverbindung."
-    echo "⚠️ Fallback 1: Überschreibe das Post-Installationsskript..."
+    
+    #############################################
+    # Fallback 1: Post-Installationsskript patchen
+    #############################################
+    echo "⚠️ Fallback 1: Überschreibe das Post-Installationsskript."
     pct exec $CT_ID -- bash -c "\
 if [ -f /var/lib/dpkg/info/onlyoffice-documentserver.postinst ]; then \
   mv /var/lib/dpkg/info/onlyoffice-documentserver.postinst /var/lib/dpkg/info/onlyoffice-documentserver.postinst.bak; \
@@ -145,15 +171,21 @@ fi"
 export LANG=en_US.UTF-8; \
 DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver
 "; then
+         #############################################
+         # Fallback 2: Dummy-PostgreSQL installieren
+         #############################################
          echo "⚠️ Fallback 2: Installiere Dummy-PostgreSQL und versuche erneut..."
-         pct exec $CT_ID -- bash -c "apt-get install -y postgresql" 
+         pct exec $CT_ID -- bash -c "apt-get install -y postgresql"
          pct exec $CT_ID -- bash -c "dpkg --configure -a"
          pct exec $CT_ID -- bash -c "DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver"
          pct exec $CT_ID -- bash -c "apt-get purge --auto-remove postgresql -y"
     fi
 fi
 
-# --- OnlyOffice-Konfiguration erneut überschreiben, um SQLite sicherzustellen ---
+#############################################
+# OnlyOffice-Konfiguration erneut überschreiben (SQLite)
+#############################################
+
 echo "🛠️ Überschreibe OnlyOffice-Konfiguration (SQLite)"
 pct exec $CT_ID -- bash -c "\
 export LANG=en_US.UTF-8; \
@@ -173,7 +205,10 @@ cat <<EOF > /etc/onlyoffice/documentserver/local.json
 EOF
 "
 
-# --- API-Key generieren und eintragen ---
+#############################################
+# API-Key generieren und in die Konfiguration eintragen
+#############################################
+
 API_KEY=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)
 pct exec $CT_ID -- bash -c "\
 export LANG=en_US.UTF-8; \
@@ -188,7 +223,10 @@ else \
 fi
 "
 
-# --- API-Key ausgeben und speichern ---
+#############################################
+# API-Key ausgeben und speichern
+#############################################
+
 echo "🔑 Der generierte API-Key lautet:"
 echo "$API_KEY"
 echo "$API_KEY" > /root/API_KEY.txt

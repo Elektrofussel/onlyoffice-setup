@@ -5,12 +5,12 @@ set -e
 echo "🚀 OnlyOffice Setup - Proxmox LXC"
 
 read -p "Container Name (z. B. OnlyOfficeServer): " CT_NAME
-read -p "Template Storage (z. B. MediumPlate): " TEMPLATE_STORAGE
+read -p "Template Storage (z. B. local-lvm): " TEMPLATE_STORAGE
 read -p "Template Path (z. B. vztmpl/debian-12-standard_12.7-1_amd64.tar.zst): " TEMPLATE_PATH
 
 read -p "IPv4 Modus (static/dhcp): " IPV4_MODE
 if [[ "$IPV4_MODE" == "static" ]]; then
-    read -p "IPv4 Adresse (z. B. 192.168.2.206/24): " IPV4_ADDR
+    read -p "IPv4 Adresse (z. B. 192.168.2.2/24): " IPV4_ADDR
     read -p "IPv4 Gateway (z. B. 192.168.2.1): " IPV4_GW
 else
     IPV4_ADDR=""

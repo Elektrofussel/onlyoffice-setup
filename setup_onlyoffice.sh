@@ -16,7 +16,7 @@ read -p "Template Path (z. B. debian-12-standard_12.7-1_amd64.tar.zst): " TEMPLA
 
 read -p "IPv4 Modus (static/dhcp): " IPV4_MODE
 if [[ "$IPV4_MODE" == "static" ]]; then
-    read -p "IPv4 Adresse (z. B. 192.168.2.100/24): " IPV4_ADDR
+    read -p "IPv4 Adresse (z. B. 192.168.2.206/24): " IPV4_ADDR
     read -p "IPv4 Gateway (z. B. 192.168.2.1): " IPV4_GW
 fi
 
@@ -37,7 +37,7 @@ if [[ -z "$CT_ID" || -z "$CT_NAME" || -z "$TEMPLATE_STORAGE" || -z "$TEMPLATE_PA
     exit 1
 fi
 
-# Vollständiger Template-Pfad (anpassen, falls nötig)
+# Vollständiger Template-Pfad
 TEMPLATE_FULL="/mnt/pve/${TEMPLATE_STORAGE}/template/cache/${TEMPLATE_PATH}"
 
 # Netzwerkkonfiguration zusammensetzen
@@ -123,7 +123,7 @@ export LANG=en_US.UTF-8; \
 export ONLYOFFICE_DB_TYPE=sqlite; \
 apt-get update && \
 apt-get install -y gnupg2 wget apt-transport-https ca-certificates jq && \
-wget -qO - https://download.onlyoffice.com/repo/onlyoffice.key | gpg --dearmor > /usr/share/keyrings/onlyoffice-keyring.gpg || \
+( wget -qO - https://download.onlyoffice.com/repo/onlyoffice.key | gpg --dearmor > /usr/share/keyrings/onlyoffice-keyring.gpg ) || \
 (apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 8320CA65CB2DE8E5); \
 echo 'deb [signed-by=/usr/share/keyrings/onlyoffice-keyring.gpg trusted=yes] https://download.onlyoffice.com/repo/debian squeeze main' > /etc/apt/sources.list.d/onlyoffice.list; \
 apt-get update; \
@@ -146,7 +146,7 @@ export LANG=en_US.UTF-8; \
 DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver
 "; then
          echo "⚠️ Fallback 2: Installiere Dummy-PostgreSQL und versuche erneut..."
-         pct exec $CT_ID -- bash -c "apt-get install -y postgresql"
+         pct exec $CT_ID -- bash -c "apt-get install -y postgresql" 
          pct exec $CT_ID -- bash -c "dpkg --configure -a"
          pct exec $CT_ID -- bash -c "DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver"
          pct exec $CT_ID -- bash -c "apt-get purge --auto-remove postgresql -y"

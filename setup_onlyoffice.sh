@@ -4,7 +4,7 @@ set -e
 echo "🚀 OnlyOffice Setup - Proxmox LXC"
 
 # --- Interaktive Abfrage der Parameter ---
-read -p "Container ID (z. B. 100): " CT_ID
+read -p "Container ID (z. B. 206): " CT_ID
 if ! [[ "$CT_ID" =~ ^[0-9]+$ ]]; then
     echo "❌ Fehler: Container ID muss eine Zahl sein!"
     exit 1
@@ -16,7 +16,7 @@ read -p "Template Path (z. B. debian-12-standard_12.7-1_amd64.tar.zst): " TEMPLA
 
 read -p "IPv4 Modus (static/dhcp): " IPV4_MODE
 if [[ "$IPV4_MODE" == "static" ]]; then
-    read -p "IPv4 Adresse (z. B. 192.168.2.100/24): " IPV4_ADDR
+    read -p "IPv4 Adresse (z. B. 192.168.2.206/24): " IPV4_ADDR
     read -p "IPv4 Gateway (z. B. 192.168.2.1): " IPV4_GW
 fi
 
@@ -26,7 +26,7 @@ if [[ "$IPV6_MODE" == "static" ]]; then
     read -p "IPv6 Gateway (z. B. fe80::1): " IPV6_GW
 fi
 
-read -p "Rootfs Größe in GB (z. B. 8): " ROOTFS_SIZE
+read -p "Rootfs Größe in GB (z. B. 50): " ROOTFS_SIZE
 if [[ -z "$ROOTFS_SIZE" ]]; then
     ROOTFS_SIZE=50
 fi
@@ -104,9 +104,7 @@ cat <<EOF > /etc/onlyoffice/documentserver/local.json
 {
     \"services\": {
         \"CoAuthoring\": {
-            \"sql\": {
-                \"type\": \"sqlite\"
-            },
+            \"sql\": { \"type\": \"sqlite\" },
             \"secret\": {
                 \"inbox\": { \"string\": \"\" },
                 \"outbox\": { \"string\": \"\" },
@@ -118,32 +116,39 @@ cat <<EOF > /etc/onlyoffice/documentserver/local.json
 EOF
 "
 
-# --- OnlyOffice Document Server installieren ---
-echo "💾 Installiere OnlyOffice Document Server"
-# Setze die Umgebungsvariable ONLYOFFICE_DB_TYPE, damit die Post-Install-Skripte SQLite verwenden
+# --- OnlyOffice Document Server Installation mit Fallbacks ---
+echo "💾 Installiere OnlyOffice Document Server (Versuch 1)"
 pct exec $CT_ID -- bash -c "\
-export LANG=en_US.UTF-8 && \
-export ONLYOFFICE_DB_TYPE=sqlite && \
+export LANG=en_US.UTF-8; \
+export ONLYOFFICE_DB_TYPE=sqlite; \
 apt-get update && \
 apt-get install -y gnupg2 wget apt-transport-https ca-certificates jq && \
 wget -qO - https://download.onlyoffice.com/repo/onlyoffice.key | gpg --dearmor > /usr/share/keyrings/onlyoffice-keyring.gpg || \
-(apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 8320CA65CB2DE8E5) && \
-echo 'deb [signed-by=/usr/share/keyrings/onlyoffice-keyring.gpg trusted=yes] https://download.onlyoffice.com/repo/debian squeeze main' > /etc/apt/sources.list.d/onlyoffice.list && \
-apt-get update && \
-DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver
+(apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 8320CA65CB2DE8E5); \
+echo 'deb [signed-by=/usr/share/keyrings/onlyoffice-keyring.gpg trusted=yes] https://download.onlyoffice.com/repo/debian squeeze main' > /etc/apt/sources.list.d/onlyoffice.list; \
+apt-get update; \
+if ! DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver; then \
+    echo '⚠️ Installationsversuch 1 fehlgeschlagen. Führe dpkg --configure -a aus.'; \
+    dpkg --configure -a; \
+    if ! DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver; then \
+         echo '⚠️ Installationsversuch 2 fehlgeschlagen. Installiere Dummy-PostgreSQL und versuche erneut.'; \
+         apt-get install -y postgresql; \
+         dpkg --configure -a; \
+         DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver; \
+         apt-get purge --auto-remove postgresql -y; \
+    fi; \
+fi
 "
 
 # --- OnlyOffice-Konfiguration erneut überschreiben, um SQLite sicherzustellen ---
 echo "🛠️ Überschreibe OnlyOffice-Konfiguration (SQLite)"
 pct exec $CT_ID -- bash -c "\
-export LANG=en_US.UTF-8 && \
+export LANG=en_US.UTF-8; \
 cat <<EOF > /etc/onlyoffice/documentserver/local.json
 {
     \"services\": {
         \"CoAuthoring\": {
-            \"sql\": {
-                \"type\": \"sqlite\"
-            },
+            \"sql\": { \"type\": \"sqlite\" },
             \"secret\": {
                 \"inbox\": { \"string\": \"\" },
                 \"outbox\": { \"string\": \"\" },
@@ -155,10 +160,10 @@ cat <<EOF > /etc/onlyoffice/documentserver/local.json
 EOF
 "
 
-# --- API-Key generieren und eintragen ---
+# --- API-Key generieren und in die Konfiguration eintragen ---
 API_KEY=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)
 pct exec $CT_ID -- bash -c "\
-export LANG=en_US.UTF-8 && \
+export LANG=en_US.UTF-8; \
 if [ -f /etc/onlyoffice/documentserver/local.json ]; then \
   jq '.services.CoAuthoring.secret.inbox.string = \"$API_KEY\" | \
       .services.CoAuthoring.secret.outbox.string = \"$API_KEY\" | \

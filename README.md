@@ -1,42 +1,30 @@
-# OnlyOffice Setup für Proxmox
+# OnlyOffice LXC Setup für Proxmox
 
-Dieses Skript erstellt einen unprivilegierten Debian 12 LXC-Container, setzt die Netzwerkkonfiguration und installiert OnlyOffice Document Server.
+Dieses Skript erstellt einen unprivilegierten Debian 12 LXC-Container auf Proxmox und installiert OnlyOffice Document Server.
 
 ## 📥 Installation
 
 ```bash
-wget -qO setup_onlyoffice.sh https://raw.githubusercontent.com/Elektrofussel/onlyoffice-setup/main/setup_onlyoffice.sh && chmod +x setup_onlyoffice.sh && ./setup_onlyoffice.sh
+wget -4 -qO setup_onlyoffice.sh https://raw.githubusercontent.com/Elektrofussel/onlyoffice-setup/main/setup_onlyoffice.sh && chmod +x setup_onlyoffice.sh && ./setup_onlyoffice.sh
 ```
 
-## ⚙️ Ablauf
+## Parameter die abgefragt werden:
 
-1. Abfragen von:
-   - Container-Name
-   - Template Storage & Path
-   - IPv4/IPv6 Konfiguration
-2. Löschen eines bestehenden Containers (falls vorhanden)
-3. Anlegen & Starten des neuen Containers
-4. Setzen der Locale im Container
-5. Hinzufügen des OnlyOffice Repos
-6. Installation des Document Servers
+- Container ID (z. B. 206)
+- Container Name (z. B. OnlyOfficeServer)
+- Template Storage (z. B. MediumPlate)
+- Template Path (z. B. vztmpl/debian-12-standard_12.7-1_amd64.tar.zst)
+- IPv4 (static oder dhcp)
+- IPv6 (static, dhcp oder none)
 
-## 📋 Voraussetzungen
+## Voraussetzungen
 
-- Proxmox 7/8
-- Debian 12 Template im angegebenen Storage vorhanden
-- Internetzugang für apt & wget
+- Proxmox VE 7/8
+- Debian 12 Template vorhanden im Storage
 
-## 📝 Beispiel
+## 📄 Hinweis
 
+Nach der Installation füge die Container-IP und den Namen in die Nextcloud `/etc/hosts` ein, z. B.:
 ```
-Container Name: OnlyOfficeServer
-Template Storage: MediumPlate
-Template Path: vztmpl/debian-12-standard_12.7-1_amd64.tar.zst
-IPv4: static 192.168.2.206/24 mit Gateway 192.168.2.1
-IPv6: dhcp
+192.168.2.206 OnlyOfficeServer
 ```
-
-## Schluss
-
-Das Skript, sowie der Inhalt der Readme wurde durch die ChatGPT 4o von OpenAI erstellt.
-Anregungen, Änderungswünsche oder fortsetzen des Projektes ist von mir gewünscht, ansonsten viel Spaß und Erfolg!

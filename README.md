@@ -13,7 +13,7 @@ wget -4 -O setup_onlyoffice.sh https://raw.githubusercontent.com/Elektrofussel/o
 - Container ID (z. B. 101)
 - Container Name (z. B. OnlyOfficeServer)
 - Template Storage (z. B. local-lvm)
-- Template Path (z. B. vztmpl/debian-12-standard_12.7-1_amd64.tar.zst)
+- Template Path (z. B. debian-12-standard_12.7-1_amd64.tar.zst)
 - IPv4 (static oder dhcp)
 - IPv6 (static, dhcp oder none)
 
@@ -28,6 +28,7 @@ Nach der Installation füge die Container-IP und den Namen in die Nextcloud `/et
 ```
 192.168.2.101 OnlyOfficeServer
 ```
+Außerdem wird der generierte API‑Key der OnlyOffice‑Konfiguration, in der Konsole ausgegeben und in `/root/API_KEY.txt` gespeichert bzw. in dem Speicherort des setup_onlyoffice.sh Skript`s.
 
 ## Schluss
 

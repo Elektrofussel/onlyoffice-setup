@@ -37,7 +37,7 @@ if [[ -z "$CT_ID" || -z "$CT_NAME" || -z "$TEMPLATE_STORAGE" || -z "$TEMPLATE_PA
     exit 1
 fi
 
-# Vollständiger Template-Pfad (Passe diesen ggf. an deine Umgebung an)
+# Vollständiger Template-Pfad (anpassen, falls nötig)
 TEMPLATE_FULL="/mnt/pve/${TEMPLATE_STORAGE}/template/cache/${TEMPLATE_PATH}"
 
 # Netzwerkkonfiguration zusammensetzen
@@ -73,7 +73,7 @@ pct create $CT_ID "$TEMPLATE_FULL" \
     --features "nesting=1" \
     --ostype "debian"
 
-# Füge den systemd-Fix in die LXC-Konfiguration ein
+# Systemd-Fix in LXC-Konfiguration einfügen
 cat <<EOF >> /etc/pve/lxc/$CT_ID.conf
 lxc.apparmor.profile: unconfined
 lxc.cgroup.devices.allow: a
@@ -96,7 +96,7 @@ echo 'export LANG=en_US.UTF-8' >> /etc/profile && \
 echo 'export LANG=en_US.UTF-8' >> /root/.bashrc
 "
 
-# --- Vorab OnlyOffice-Konfiguration mit SQLite erzeugen ---
+# --- Vorab OnlyOffice-Konfiguration (SQLite) erzeugen ---
 echo "🛠️ Erzeuge OnlyOffice-Konfiguration (SQLite) vor der Installation"
 pct exec $CT_ID -- bash -c "\
 mkdir -p /etc/onlyoffice/documentserver && \
@@ -116,9 +116,9 @@ cat <<EOF > /etc/onlyoffice/documentserver/local.json
 EOF
 "
 
-# --- OnlyOffice Document Server Installation mit Fallbacks ---
+# --- Installation OnlyOffice Document Server mit Fallback-Kette ---
 echo "💾 Installiere OnlyOffice Document Server (Versuch 1)"
-pct exec $CT_ID -- bash -c "\
+if ! pct exec $CT_ID -- bash -c "\
 export LANG=en_US.UTF-8; \
 export ONLYOFFICE_DB_TYPE=sqlite; \
 apt-get update && \
@@ -127,18 +127,31 @@ wget -qO - https://download.onlyoffice.com/repo/onlyoffice.key | gpg --dearmor >
 (apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 8320CA65CB2DE8E5); \
 echo 'deb [signed-by=/usr/share/keyrings/onlyoffice-keyring.gpg trusted=yes] https://download.onlyoffice.com/repo/debian squeeze main' > /etc/apt/sources.list.d/onlyoffice.list; \
 apt-get update; \
-if ! DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver; then \
-    echo '⚠️ Installationsversuch 1 fehlgeschlagen. Führe dpkg --configure -a aus.'; \
-    dpkg --configure -a; \
-    if ! DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver; then \
-         echo '⚠️ Installationsversuch 2 fehlgeschlagen. Installiere Dummy-PostgreSQL und versuche erneut.'; \
-         apt-get install -y postgresql; \
-         dpkg --configure -a; \
-         DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver; \
-         apt-get purge --auto-remove postgresql -y; \
-    fi; \
+DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver
+"; then
+    echo "✅ OnlyOffice Document Server installiert (Versuch 1 erfolgreich)."
+else
+    echo "⚠️ Installationsversuch 1 fehlgeschlagen: Post-Installationsskript verweigert die Datenbankverbindung."
+    echo "⚠️ Fallback 1: Überschreibe das Post-Installationsskript..."
+    pct exec $CT_ID -- bash -c "\
+if [ -f /var/lib/dpkg/info/onlyoffice-documentserver.postinst ]; then \
+  mv /var/lib/dpkg/info/onlyoffice-documentserver.postinst /var/lib/dpkg/info/onlyoffice-documentserver.postinst.bak; \
+  echo '#!/bin/sh' > /var/lib/dpkg/info/onlyoffice-documentserver.postinst; \
+  echo 'exit 0' >> /var/lib/dpkg/info/onlyoffice-documentserver.postinst; \
+  chmod +x /var/lib/dpkg/info/onlyoffice-documentserver.postinst; \
+fi"
+    pct exec $CT_ID -- bash -c "dpkg --configure -a"
+    if ! pct exec $CT_ID -- bash -c "\
+export LANG=en_US.UTF-8; \
+DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver
+"; then
+         echo "⚠️ Fallback 2: Installiere Dummy-PostgreSQL und versuche erneut..."
+         pct exec $CT_ID -- bash -c "apt-get install -y postgresql"
+         pct exec $CT_ID -- bash -c "dpkg --configure -a"
+         pct exec $CT_ID -- bash -c "DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver"
+         pct exec $CT_ID -- bash -c "apt-get purge --auto-remove postgresql -y"
+    fi
 fi
-"
 
 # --- OnlyOffice-Konfiguration erneut überschreiben, um SQLite sicherzustellen ---
 echo "🛠️ Überschreibe OnlyOffice-Konfiguration (SQLite)"
@@ -160,7 +173,7 @@ cat <<EOF > /etc/onlyoffice/documentserver/local.json
 EOF
 "
 
-# --- API-Key generieren und in die Konfiguration eintragen ---
+# --- API-Key generieren und eintragen ---
 API_KEY=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)
 pct exec $CT_ID -- bash -c "\
 export LANG=en_US.UTF-8; \

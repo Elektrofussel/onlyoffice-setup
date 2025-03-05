@@ -34,12 +34,20 @@ if [[ -z "$ROOTFS_SIZE" ]]; then
     ROOTFS_SIZE=50
 fi
 
+# Pflichtfelder prüfen
+if [[ -z "$CT_ID" || -z "$CT_NAME" || -z "$TEMPLATE_STORAGE" || -z "$TEMPLATE_PATH" ]]; then
+    echo "❌ Fehler: Container ID, Container Name, Template Storage und Template Path sind Pflicht!"
+    exit 1
+fi
+
 #############################################
 # Vorbereitung: Template-Pfad & Netzwerkkonfiguration
 #############################################
 
+# Vollständiger Template-Pfad (anpassen, falls nötig)
 TEMPLATE_FULL="/mnt/pve/${TEMPLATE_STORAGE}/template/cache/${TEMPLATE_PATH}"
 
+# Netzwerkkonfiguration zusammensetzen
 NET_CONFIG="name=eth0,bridge=vmbr0"
 if [[ "$IPV4_MODE" == "static" ]]; then
     NET_CONFIG="$NET_CONFIG,ip=$IPV4_ADDR,gw=$IPV4_GW"
@@ -57,15 +65,15 @@ fi
 #############################################
 
 echo "📦 Lösche bestehenden Container (falls vorhanden)..."
-pct stop $CT_ID || true
-pct destroy $CT_ID || true
+pct stop "$CT_ID" || true
+pct destroy "$CT_ID" || true
 
 #############################################
 # Neuen Container erstellen
 #############################################
 
 echo "📦 Erstelle neuen Container: $CT_NAME (ID: $CT_ID)"
-pct create $CT_ID "$TEMPLATE_FULL" \
+pct create "$CT_ID" "$TEMPLATE_FULL" \
     --arch amd64 \
     --hostname "$CT_NAME" \
     --cores 2 \
@@ -78,13 +86,14 @@ pct create $CT_ID "$TEMPLATE_FULL" \
     --features "nesting=1" \
     --ostype "debian"
 
-cat <<EOF >> /etc/pve/lxc/$CT_ID.conf
+# Systemd‑Fix in der Container-Konfiguration hinzufügen
+cat <<EOF >> "/etc/pve/lxc/$CT_ID.conf"
 lxc.apparmor.profile: unconfined
 lxc.cgroup.devices.allow: a
 lxc.cap.drop:
 EOF
 
-pct start $CT_ID
+pct start "$CT_ID"
 sleep 10
 
 #############################################
@@ -92,7 +101,7 @@ sleep 10
 #############################################
 
 echo "🌍 Setze Locale im Container"
-pct exec $CT_ID -- bash -c "\
+pct exec "$CT_ID" -- bash -c "\
 apt-get update && \
 apt-get install -y locales && \
 echo 'en_US.UTF-8 UTF-8' > /etc/locale.gen && \
@@ -104,11 +113,11 @@ echo 'export LANG=en_US.UTF-8' >> /root/.bashrc
 "
 
 #############################################
-# Vorab OnlyOffice-Konfiguration (SQLite) erzeugen
+# Vorab-Konfiguration von OnlyOffice (SQLite)
 #############################################
 
 echo "🛠️ Erzeuge OnlyOffice-Konfiguration (SQLite) vor der Installation"
-pct exec $CT_ID -- bash -c "\
+pct exec "$CT_ID" -- bash -c "\
 mkdir -p /etc/onlyoffice/documentserver && \
 cat <<EOF > /etc/onlyoffice/documentserver/local.json
 {
@@ -131,14 +140,14 @@ EOF
 #############################################
 
 echo "💾 Installiere OnlyOffice Document Server (Versuch 1)"
-if pct exec $CT_ID -- bash -c "\
+if pct exec "$CT_ID" -- bash -c "\
 export LANG=en_US.UTF-8; \
 export ONLYOFFICE_DB_TYPE=sqlite; \
 apt-get update && \
 apt-get install -y gnupg2 wget apt-transport-https ca-certificates jq && \
 wget -qO - https://download.onlyoffice.com/repo/onlyoffice.key | gpg --dearmor > /usr/share/keyrings/onlyoffice-keyring.gpg || \
 (apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 8320CA65CB2DE8E5); \
-echo 'deb [signed-by=/usr/share/keyrings/onlyoffice-keyring.gpg trusted=yes] https://download.onlyoffice.com/repo/debian squeeze main' > /etc/apt/sources.list.d/onlyoffice.list; \
+echo 'deb [signed-by=/usr/share/keyrings/onlyoffice-keyring.gpg trusted=yes] https://download.onlyoffice.com/repo/debian bookworm main' > /etc/apt/sources.list.d/onlyoffice.list; \
 apt-get update; \
 DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver
 "; then
@@ -150,41 +159,37 @@ else
     # Fallback 1: Post-Installationsskript patchen
     #############################################
     echo "⚠️ Fallback 1: Überschreibe das Post-Installationsskript."
-    pct exec $CT_ID -- bash -c "\
+    pct exec "$CT_ID" -- bash -c "\
 if [ -f /var/lib/dpkg/info/onlyoffice-documentserver.postinst ]; then \
   mv /var/lib/dpkg/info/onlyoffice-documentserver.postinst /var/lib/dpkg/info/onlyoffice-documentserver.postinst.bak; \
   echo '#!/bin/sh' > /var/lib/dpkg/info/onlyoffice-documentserver.postinst; \
   echo 'exit 0' >> /var/lib/dpkg/info/onlyoffice-documentserver.postinst; \
   chmod +x /var/lib/dpkg/info/onlyoffice-documentserver.postinst; \
 fi"
-    pct exec $CT_ID -- bash -c "dpkg --configure -a"
-    if ! pct exec $CT_ID -- bash -c "\
+    pct exec "$CT_ID" -- bash -c "dpkg --configure -a"
+    if pct exec "$CT_ID" -- bash -c "\
 export LANG=en_US.UTF-8; \
 DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver
 "; then
-         #############################################
-         # Fallback 2: Dummy-PostgreSQL installieren
-         #############################################
-         echo "⚠️ Fallback 2: Installiere Dummy-PostgreSQL und versuche erneut..."
-         pct exec $CT_ID -- bash -c "apt-get install -y postgresql" 
-         pct exec $CT_ID -- bash -c "dpkg --configure -a"
-         pct exec $CT_ID -- bash -c "DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver"
-         pct exec $CT_ID -- bash -c "apt-get purge --auto-remove postgresql -y"
+        echo "✅ OnlyOffice Document Server installiert (Fallback 1 erfolgreich)."
+    else
+        #############################################
+        # Fallback 2: Dummy-PostgreSQL installieren
+        #############################################
+        echo "⚠️ Fallback 2: Installiere Dummy-PostgreSQL und versuche erneut..."
+        pct exec "$CT_ID" -- bash -c "apt-get install -y postgresql"
+        pct exec "$CT_ID" -- bash -c "dpkg --configure -a"
+        pct exec "$CT_ID" -- bash -c "DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver"
+        pct exec "$CT_ID" -- bash -c "apt-get purge --auto-remove postgresql -y"
     fi
 fi
-
-#############################################
-# Fallback 3: Erzwinge dpkg-Konfiguration (falls nötig)
-#############################################
-echo "⚠️ Fallback 3: Erzwinge dpkg-Konfiguration..."
-pct exec $CT_ID -- bash -c "dpkg --force-all --configure onlyoffice-documentserver"
 
 #############################################
 # OnlyOffice-Konfiguration erneut überschreiben (SQLite)
 #############################################
 
 echo "🛠️ Überschreibe OnlyOffice-Konfiguration (SQLite)"
-pct exec $CT_ID -- bash -c "\
+pct exec "$CT_ID" -- bash -c "\
 export LANG=en_US.UTF-8; \
 cat <<EOF > /etc/onlyoffice/documentserver/local.json
 {
@@ -206,8 +211,8 @@ EOF
 # API-Key generieren und in die Konfiguration eintragen
 #############################################
 
-API_KEY=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)
-pct exec $CT_ID -- bash -c "\
+API_KEY=\$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)
+pct exec "$CT_ID" -- bash -c "\
 export LANG=en_US.UTF-8; \
 if [ -f /etc/onlyoffice/documentserver/local.json ]; then \
   jq '.services.CoAuthoring.secret.inbox.string = \"$API_KEY\" | \

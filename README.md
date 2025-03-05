@@ -5,14 +5,14 @@ Dieses Skript erstellt einen unprivilegierten Debian 12 LXC-Container auf Proxmo
 ## 📥 Installation
 
 ```bash
-wget -4 -qO setup_onlyoffice.sh https://raw.githubusercontent.com/Elektrofussel/onlyoffice-setup/main/setup_onlyoffice.sh && chmod +x setup_onlyoffice.sh && ./setup_onlyoffice.sh
+wget -4 -O setup_onlyoffice.sh https://raw.githubusercontent.com/Elektrofussel/onlyoffice-setup/main/setup_onlyoffice.sh && chmod +x setup_onlyoffice.sh && ./setup_onlyoffice.sh
 ```
 
 ## Parameter die abgefragt werden:
 
-- Container ID (z. B. 206)
+- Container ID (z. B. 101)
 - Container Name (z. B. OnlyOfficeServer)
-- Template Storage (z. B. MediumPlate)
+- Template Storage (z. B. local-lvm)
 - Template Path (z. B. vztmpl/debian-12-standard_12.7-1_amd64.tar.zst)
 - IPv4 (static oder dhcp)
 - IPv6 (static, dhcp oder none)
@@ -26,5 +26,10 @@ wget -4 -qO setup_onlyoffice.sh https://raw.githubusercontent.com/Elektrofussel/
 
 Nach der Installation füge die Container-IP und den Namen in die Nextcloud `/etc/hosts` ein, z. B.:
 ```
-192.168.2.206 OnlyOfficeServer
+192.168.2.101 OnlyOfficeServer
 ```
+
+## Schluss
+
+Das Skript und die Readme wurden mit OpenAI`s Projekt ChatGPT Model 4o realisiert.
+Anregungen, Änderungen, Verbesserungen gern stellen, oder einfach selbst das Projekt ab ändern.

@@ -135,13 +135,19 @@ EOF
 #############################################
 
 echo "💾 Installiere OnlyOffice Document Server (Versuch 1)"
+
+# Sicherstellen, dass Supervisor installiert ist
+pct exec "$CT_ID" -- bash -c 'apt-get update && apt-get install -y supervisor'
+
+# Hauptinstallation OnlyOffice Document Server
 if pct exec "$CT_ID" -- bash -c 'export LANG=en_US.UTF-8; \
 export ONLYOFFICE_DB_TYPE=sqlite; \
-apt-get update && \
 apt-get install -y gnupg2 wget apt-transport-https ca-certificates jq && \
 wget -qO /tmp/onlyoffice-documentserver.deb "https://download.onlyoffice.com/install/onlyoffice-documentserver_amd64.deb" && \
 dpkg -i /tmp/onlyoffice-documentserver.deb || apt-get -y --fix-broken install'; then
+
     echo "✅ OnlyOffice Document Server installiert (Versuch 1 erfolgreich)."
+
 else
     echo "⚠️ Installationsversuch 1 fehlgeschlagen: Post-Installationsskript verweigert die Datenbankverbindung."
 

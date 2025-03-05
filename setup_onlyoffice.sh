@@ -84,7 +84,7 @@ pct create "$CT_ID" "$TEMPLATE_FULL" \
     --features "nesting=1" \
     --ostype "debian"
 
-# Systemd-Fix in der Container-Konfiguration hinzufügen
+# Systemd-Fix in der Container-Konfiguration
 cat <<EOF >> "/etc/pve/lxc/$CT_ID.conf"
 lxc.apparmor.profile: unconfined
 lxc.cgroup.devices.allow: a
@@ -99,39 +99,35 @@ sleep 10
 #############################################
 
 echo "🌍 Setze Locale im Container"
-pct exec "$CT_ID" -- bash -c "\
-apt-get update && \
+pct exec "$CT_ID" -- bash -c 'apt-get update && \
 apt-get install -y locales && \
-echo 'en_US.UTF-8 UTF-8' > /etc/locale.gen && \
+echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && \
 locale-gen && \
 update-locale LANG=en_US.UTF-8 && \
 export LANG=en_US.UTF-8 && \
-echo 'export LANG=en_US.UTF-8' >> /etc/profile && \
-echo 'export LANG=en_US.UTF-8' >> /root/.bashrc
-"
+echo "export LANG=en_US.UTF-8" >> /etc/profile && \
+echo "export LANG=en_US.UTF-8" >> /root/.bashrc'
 
 #############################################
 # Vorab-Konfiguration von OnlyOffice (SQLite)
 #############################################
 
 echo "🛠️ Erzeuge OnlyOffice-Konfiguration (SQLite) vor der Installation"
-pct exec "$CT_ID" -- bash -c "\
-mkdir -p /etc/onlyoffice/documentserver && \
-cat <<EOJSON > /etc/onlyoffice/documentserver/local.json
+pct exec "$CT_ID" -- bash -c 'mkdir -p /etc/onlyoffice/documentserver && cat <<EOF >/etc/onlyoffice/documentserver/local.json
 {
-    \"services\": {
-        \"CoAuthoring\": {
-            \"sql\": { \"type\": \"sqlite\" },
-            \"secret\": {
-                \"inbox\": { \"string\": \"\" },
-                \"outbox\": { \"string\": \"\" },
-                \"session\": { \"string\": \"\" }
-            }
-        }
+  "services": {
+    "CoAuthoring": {
+      "sql": { "type": "sqlite" },
+      "secret": {
+        "inbox": { "string": "" },
+        "outbox": { "string": "" },
+        "session": { "string": "" }
+      }
     }
+  }
 }
-EOJSON
-"
+EOF
+'
 
 #############################################
 # OnlyOffice Document Server Installation
@@ -139,44 +135,39 @@ EOJSON
 #############################################
 
 echo "💾 Installiere OnlyOffice Document Server (Versuch 1)"
-if pct exec "$CT_ID" -- bash -c "\
-export LANG=en_US.UTF-8; \
+if pct exec "$CT_ID" -- bash -c 'export LANG=en_US.UTF-8; \
 export ONLYOFFICE_DB_TYPE=sqlite; \
 apt-get update && \
 apt-get install -y gnupg2 wget apt-transport-https ca-certificates jq && \
-wget -qO /tmp/onlyoffice-documentserver.deb 'https://download.onlyoffice.com/install/onlyoffice-documentserver_amd64.deb' && \
-dpkg -i /tmp/onlyoffice-documentserver.deb || apt-get -y --fix-broken install
-"; then
+wget -qO /tmp/onlyoffice-documentserver.deb "https://download.onlyoffice.com/install/onlyoffice-documentserver_amd64.deb" && \
+dpkg -i /tmp/onlyoffice-documentserver.deb || apt-get -y --fix-broken install'; then
     echo "✅ OnlyOffice Document Server installiert (Versuch 1 erfolgreich)."
 else
     echo "⚠️ Installationsversuch 1 fehlgeschlagen: Post-Installationsskript verweigert die Datenbankverbindung."
-    
+
     #############################################
     # Fallback 1: Post-Installationsskript patchen
     #############################################
     echo "⚠️ Fallback 1: Überschreibe das Post-Installationsskript."
-    pct exec "$CT_ID" -- bash -c "\
-if [ -f /var/lib/dpkg/info/onlyoffice-documentserver.postinst ]; then \
-  mv /var/lib/dpkg/info/onlyoffice-documentserver.postinst /var/lib/dpkg/info/onlyoffice-documentserver.postinst.bak; \
-  echo '#!/bin/sh' > /var/lib/dpkg/info/onlyoffice-documentserver.postinst; \
-  echo 'exit 0' >> /var/lib/dpkg/info/onlyoffice-documentserver.postinst; \
-  chmod +x /var/lib/dpkg/info/onlyoffice-documentserver.postinst; \
-fi"
-    pct exec "$CT_ID" -- bash -c "dpkg --configure -a"
-    if pct exec "$CT_ID" -- bash -c "\
-export LANG=en_US.UTF-8; \
-DEBIAN_FRONTEND=noninteractive apt-get install -y /tmp/onlyoffice-documentserver.deb
-"; then
+    pct exec "$CT_ID" -- bash -c 'if [ -f /var/lib/dpkg/info/onlyoffice-documentserver.postinst ]; then \
+      mv /var/lib/dpkg/info/onlyoffice-documentserver.postinst /var/lib/dpkg/info/onlyoffice-documentserver.postinst.bak; \
+      echo "#!/bin/sh" > /var/lib/dpkg/info/onlyoffice-documentserver.postinst; \
+      echo "exit 0" >> /var/lib/dpkg/info/onlyoffice-documentserver.postinst; \
+      chmod +x /var/lib/dpkg/info/onlyoffice-documentserver.postinst; \
+    fi'
+    pct exec "$CT_ID" -- bash -c 'dpkg --configure -a'
+    if pct exec "$CT_ID" -- bash -c 'export LANG=en_US.UTF-8; \
+DEBIAN_FRONTEND=noninteractive apt-get install -y /tmp/onlyoffice-documentserver.deb'; then
         echo "✅ OnlyOffice Document Server installiert (Fallback 1 erfolgreich)."
     else
         #############################################
         # Fallback 2: Dummy-PostgreSQL installieren
         #############################################
         echo "⚠️ Fallback 2: Installiere Dummy-PostgreSQL und versuche erneut..."
-        pct exec "$CT_ID" -- bash -c "apt-get install -y postgresql"
-        pct exec "$CT_ID" -- bash -c "dpkg --configure -a"
-        pct exec "$CT_ID" -- bash -c "DEBIAN_FRONTEND=noninteractive apt-get install -y /tmp/onlyoffice-documentserver.deb"
-        pct exec "$CT_ID" -- bash -c "apt-get purge --auto-remove postgresql -y"
+        pct exec "$CT_ID" -- bash -c 'apt-get install -y postgresql'
+        pct exec "$CT_ID" -- bash -c 'dpkg --configure -a'
+        pct exec "$CT_ID" -- bash -c 'DEBIAN_FRONTEND=noninteractive apt-get install -y /tmp/onlyoffice-documentserver.deb'
+        pct exec "$CT_ID" -- bash -c 'apt-get purge --auto-remove postgresql -y'
     fi
 fi
 
@@ -185,41 +176,38 @@ fi
 #############################################
 
 echo "🛠️ Überschreibe OnlyOffice-Konfiguration (SQLite)"
-pct exec "$CT_ID" -- bash -c "\
-export LANG=en_US.UTF-8; \
-cat <<EOJSON > /etc/onlyoffice/documentserver/local.json
+pct exec "$CT_ID" -- bash -c 'export LANG=en_US.UTF-8; cat <<EOF >/etc/onlyoffice/documentserver/local.json
 {
-    \"services\": {
-        \"CoAuthoring\": {
-            \"sql\": { \"type\": \"sqlite\" },
-            \"secret\": {
-                \"inbox\": { \"string\": \"\" },
-                \"outbox\": { \"string\": \"\" },
-                \"session\": { \"string\": \"\" }
-            }
-        }
+  "services": {
+    "CoAuthoring": {
+      "sql": { "type": "sqlite" },
+      "secret": {
+        "inbox": { "string": "" },
+        "outbox": { "string": "" },
+        "session": { "string": "" }
+      }
     }
+  }
 }
-EOJSON
-"
+EOF
+'
 
 #############################################
 # API-Key generieren und in die Konfiguration eintragen
 #############################################
 
-API_KEY=\$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)
-pct exec "$CT_ID" -- bash -c "\
-export LANG=en_US.UTF-8; \
+API_KEY=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)
+pct exec "$CT_ID" -- bash -c "export LANG=en_US.UTF-8; \
 if [ -f /etc/onlyoffice/documentserver/local.json ]; then \
-  jq '.services.CoAuthoring.secret.inbox.string = \"$API_KEY\" | \
-      .services.CoAuthoring.secret.outbox.string = \"$API_KEY\" | \
+  jq '.services.CoAuthoring.secret.inbox.string = \"$API_KEY\" |
+      .services.CoAuthoring.secret.outbox.string = \"$API_KEY\" |
       .services.CoAuthoring.secret.session.string = \"$API_KEY\"' \
-      /etc/onlyoffice/documentserver/local.json > /etc/onlyoffice/documentserver/local.json.tmp && \
+      /etc/onlyoffice/documentserver/local.json \
+      > /etc/onlyoffice/documentserver/local.json.tmp && \
   mv /etc/onlyoffice/documentserver/local.json.tmp /etc/onlyoffice/documentserver/local.json; \
 else \
   echo 'Warnung: /etc/onlyoffice/documentserver/local.json nicht gefunden.'; \
-fi
-"
+fi"
 
 #############################################
 # API-Key ausgeben und speichern

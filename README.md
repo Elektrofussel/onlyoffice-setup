@@ -36,3 +36,7 @@ IPv4: static 192.168.2.206/24 mit Gateway 192.168.2.1
 IPv6: dhcp
 ```
 
+## Schluss
+
+Das Skript, sowie der Inhalt der Readme wurde durch die ChatGPT 4o von OpenAI erstellt.
+Anregungen, Änderungswünsche oder fortsetzen des Projektes ist von mir gewünscht, ansonsten viel Spaß und Erfolg!

@@ -119,7 +119,7 @@ echo 'export LANG=en_US.UTF-8' >> /root/.bashrc
 echo "🛠️ Erzeuge OnlyOffice-Konfiguration (SQLite) vor der Installation"
 pct exec "$CT_ID" -- bash -c "\
 mkdir -p /etc/onlyoffice/documentserver && \
-cat <<EOF > /etc/onlyoffice/documentserver/local.json
+cat <<EOJSON > /etc/onlyoffice/documentserver/local.json
 {
     \"services\": {
         \"CoAuthoring\": {
@@ -132,11 +132,12 @@ cat <<EOF > /etc/onlyoffice/documentserver/local.json
         }
     }
 }
-EOF
+EOJSON
 "
 
 #############################################
-# OnlyOffice Document Server Installation mit Fallback-Kette
+# OnlyOffice Document Server Installation
+# mit Fallback-Kette
 #############################################
 
 echo "💾 Installiere OnlyOffice Document Server (Versuch 1)"
@@ -147,7 +148,7 @@ apt-get update && \
 apt-get install -y gnupg2 wget apt-transport-https ca-certificates jq && \
 wget -qO - https://download.onlyoffice.com/repo/onlyoffice.key | gpg --dearmor > /usr/share/keyrings/onlyoffice-keyring.gpg || \
 (apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 8320CA65CB2DE8E5); \
-echo 'deb [signed-by=/usr/share/keyrings/onlyoffice-keyring.gpg trusted=yes] https://download.onlyoffice.com/repo/debian bookworm main' > /etc/apt/sources.list.d/onlyoffice.list; \
+echo 'deb [signed-by=/usr/share/keyrings/onlyoffice-keyring.gpg trusted=yes] https://download.onlyoffice.com/repo/debian/ bullseye main' > /etc/apt/sources.list.d/onlyoffice.list; \
 apt-get update; \
 DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver
 "; then
@@ -191,7 +192,7 @@ fi
 echo "🛠️ Überschreibe OnlyOffice-Konfiguration (SQLite)"
 pct exec "$CT_ID" -- bash -c "\
 export LANG=en_US.UTF-8; \
-cat <<EOF > /etc/onlyoffice/documentserver/local.json
+cat <<EOJSON > /etc/onlyoffice/documentserver/local.json
 {
     \"services\": {
         \"CoAuthoring\": {
@@ -204,7 +205,7 @@ cat <<EOF > /etc/onlyoffice/documentserver/local.json
         }
     }
 }
-EOF
+EOJSON
 "
 
 #############################################

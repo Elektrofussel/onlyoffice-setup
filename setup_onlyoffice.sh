@@ -3,20 +3,20 @@ set -e
 
 echo "🚀 OnlyOffice Setup - Proxmox LXC"
 
-# Interaktive Abfrage der Parameter
-read -p "Container ID (z. B. 100): " CT_ID
+# --- Interaktive Abfrage der Parameter ---
+read -p "Container ID (z. B. 206): " CT_ID
 if ! [[ "$CT_ID" =~ ^[0-9]+$ ]]; then
     echo "❌ Fehler: Container ID muss eine Zahl sein!"
     exit 1
 fi
 
 read -p "Container Name (z. B. OnlyOfficeServer): " CT_NAME
-read -p "Template Storage (z. B. local-lvm): " TEMPLATE_STORAGE
-read -p "Template Path (z. B. debian-12-standard_12.7-1_amd64.tar.zst): " TEMPLATE_PATH
+read -p "Template Storage (z. B. MediumPlate): " TEMPLATE_STORAGE
+read -p "Template Path (z. B. vztmpl/debian-12-standard_12.7-1_amd64.tar.zst): " TEMPLATE_PATH
 
 read -p "IPv4 Modus (static/dhcp): " IPV4_MODE
 if [[ "$IPV4_MODE" == "static" ]]; then
-    read -p "IPv4 Adresse (z. B. 192.168.2.100/24): " IPV4_ADDR
+    read -p "IPv4 Adresse (z. B. 192.168.2.206/24): " IPV4_ADDR
     read -p "IPv4 Gateway (z. B. 192.168.2.1): " IPV4_GW
 fi
 
@@ -37,7 +37,7 @@ if [[ -z "$CT_ID" || -z "$CT_NAME" || -z "$TEMPLATE_STORAGE" || -z "$TEMPLATE_PA
     exit 1
 fi
 
-# Vollständiger Template-Pfad (Passe diesen ggf. an deine Umgebung an)
+# Vollständiger Template-Pfad (an deine Umgebung anpassen, falls nötig)
 TEMPLATE_FULL="/mnt/pve/${TEMPLATE_STORAGE}/template/cache/${TEMPLATE_PATH}"
 
 # Netzwerkkonfiguration zusammensetzen
@@ -53,10 +53,12 @@ elif [[ "$IPV6_MODE" == "dhcp" ]]; then
     NET_CONFIG="$NET_CONFIG,ip6=dhcp"
 fi
 
+# --- Alten Container löschen, falls vorhanden ---
 echo "📦 Lösche bestehenden Container (falls vorhanden)..."
 pct stop $CT_ID || true
 pct destroy $CT_ID || true
 
+# --- Neuen Container erstellen ---
 echo "📦 Erstelle neuen Container: $CT_NAME (ID: $CT_ID)"
 pct create $CT_ID "$TEMPLATE_FULL" \
     --arch amd64 \
@@ -71,7 +73,7 @@ pct create $CT_ID "$TEMPLATE_FULL" \
     --features "nesting=1" \
     --ostype "debian"
 
-# Füge den systemd-Fix in die LXC-Konfiguration ein
+# Systemd-Fix in LXC-Konfiguration einfügen
 cat <<EOF >> /etc/pve/lxc/$CT_ID.conf
 lxc.apparmor.profile: unconfined
 lxc.cgroup.devices.allow: a
@@ -81,6 +83,7 @@ EOF
 pct start $CT_ID
 sleep 10
 
+# --- Locale setzen (inkl. Export in aktuelle Shell) ---
 echo "🌍 Setze Locale im Container"
 pct exec $CT_ID -- bash -c "\
 apt-get update && \
@@ -93,19 +96,22 @@ echo 'export LANG=en_US.UTF-8' >> /etc/profile && \
 echo 'export LANG=en_US.UTF-8' >> /root/.bashrc
 "
 
+# --- OnlyOffice Document Server installieren ---
 echo "💾 Installiere OnlyOffice Document Server"
 pct exec $CT_ID -- bash -c "\
 export LANG=en_US.UTF-8 && \
 apt-get update && \
+apt-get remove --purge postgresql* -y || true && \
 apt-get install -y gnupg2 wget apt-transport-https ca-certificates && \
 wget -qO - https://download.onlyoffice.com/repo/onlyoffice.key | gpg --dearmor > /usr/share/keyrings/onlyoffice-keyring.gpg || \
 (apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 8320CA65CB2DE8E5) && \
 echo 'deb [signed-by=/usr/share/keyrings/onlyoffice-keyring.gpg trusted=yes] https://download.onlyoffice.com/repo/debian squeeze main' > /etc/apt/sources.list.d/onlyoffice.list && \
 apt-get update && \
-DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver
+DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver || true && \
+dpkg --configure -a || true
 "
 
-# Überschreibe die OnlyOffice-Konfiguration, um SQLite zu erzwingen
+# --- OnlyOffice-Konfiguration mit SQLite erzwingen ---
 echo "🛠️ Setze OnlyOffice-Konfiguration auf SQLite"
 pct exec $CT_ID -- bash -c "\
 export LANG=en_US.UTF-8 && \
@@ -127,10 +133,8 @@ cat <<EOF > /etc/onlyoffice/documentserver/local.json
 EOF
 "
 
-# API-Key generieren
+# --- API-Key generieren und in die Konfiguration eintragen ---
 API_KEY=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)
-
-# API-Key in OnlyOffice-Konfiguration eintragen
 pct exec $CT_ID -- bash -c "\
 export LANG=en_US.UTF-8 && \
 if [ -f /etc/onlyoffice/documentserver/local.json ]; then \
@@ -144,7 +148,7 @@ else \
 fi
 "
 
-# Ausgabe des API-Keys
+# --- API-Key in der Konsole ausgeben und in Datei speichern ---
 echo "🔑 Der generierte API-Key lautet:"
 echo "$API_KEY"
 echo "$API_KEY" > /root/API_KEY.txt

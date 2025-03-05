@@ -4,19 +4,19 @@ set -e
 echo "🚀 OnlyOffice Setup - Proxmox LXC"
 
 # Interaktive Abfrage der Parameter
-read -p "Container ID (z. B. 206): " CT_ID
+read -p "Container ID (z. B. 100): " CT_ID
 if ! [[ "$CT_ID" =~ ^[0-9]+$ ]]; then
     echo "❌ Fehler: Container ID muss eine Zahl sein!"
     exit 1
 fi
 
 read -p "Container Name (z. B. OnlyOfficeServer): " CT_NAME
-read -p "Template Storage (z. B. MediumPlate): " TEMPLATE_STORAGE
-read -p "Template Path (z. B. vztmpl/debian-12-standard_12.7-1_amd64.tar.zst): " TEMPLATE_PATH
+read -p "Template Storage (z. B. local-lvm): " TEMPLATE_STORAGE
+read -p "Template Path (z. B. debian-12-standard_12.7-1_amd64.tar.zst): " TEMPLATE_PATH
 
 read -p "IPv4 Modus (static/dhcp): " IPV4_MODE
 if [[ "$IPV4_MODE" == "static" ]]; then
-    read -p "IPv4 Adresse (z. B. 192.168.2.206/24): " IPV4_ADDR
+    read -p "IPv4 Adresse (z. B. 192.168.2.100/24): " IPV4_ADDR
     read -p "IPv4 Gateway (z. B. 192.168.2.1): " IPV4_GW
 fi
 
@@ -26,13 +26,18 @@ if [[ "$IPV6_MODE" == "static" ]]; then
     read -p "IPv6 Gateway (z. B. fe80::1): " IPV6_GW
 fi
 
-# Prüfe Pflichtfelder
+read -p "Rootfs Größe in GB (z. B. 50): " ROOTFS_SIZE
+if [[ -z "$ROOTFS_SIZE" ]]; then
+    ROOTFS_SIZE=50
+fi
+
+# Pflichtfelder prüfen
 if [[ -z "$CT_ID" || -z "$CT_NAME" || -z "$TEMPLATE_STORAGE" || -z "$TEMPLATE_PATH" ]]; then
     echo "❌ Fehler: Container ID, Container Name, Template Storage und Template Path sind Pflicht!"
     exit 1
 fi
 
-# Erstelle den vollständigen Template-Pfad (Passe diesen ggf. an deine Umgebung an)
+# Vollständiger Template-Pfad (Passe diesen ggf. an deine Umgebung an)
 TEMPLATE_FULL="/mnt/pve/${TEMPLATE_STORAGE}/template/cache/${TEMPLATE_PATH}"
 
 # Netzwerkkonfiguration zusammensetzen
@@ -62,6 +67,7 @@ pct create $CT_ID "$TEMPLATE_FULL" \
     --unprivileged 1 \
     --net0 "$NET_CONFIG" \
     --storage "local-lvm" \
+    --rootfs "local-lvm:${ROOTFS_SIZE}" \
     --features "nesting=1" \
     --ostype "debian"
 
@@ -99,6 +105,28 @@ apt-get update && \
 DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver
 "
 
+# Überschreibe die OnlyOffice-Konfiguration, um SQLite zu erzwingen
+echo "🛠️ Setze OnlyOffice-Konfiguration auf SQLite"
+pct exec $CT_ID -- bash -c "\
+export LANG=en_US.UTF-8 && \
+cat <<EOF > /etc/onlyoffice/documentserver/local.json
+{
+    \"services\": {
+        \"CoAuthoring\": {
+            \"sql\": {
+                \"type\": \"sqlite\"
+            },
+            \"secret\": {
+                \"inbox\": { \"string\": \"\" },
+                \"outbox\": { \"string\": \"\" },
+                \"session\": { \"string\": \"\" }
+            }
+        }
+    }
+}
+EOF
+"
+
 # API-Key generieren
 API_KEY=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)
 
@@ -116,11 +144,11 @@ else \
 fi
 "
 
-# Ausgabe des API-Keys in der Konsole und speichern in /root/API_KEY.txt
+# Ausgabe des API-Keys
 echo "🔑 Der generierte API-Key lautet:"
 echo "$API_KEY"
 echo "$API_KEY" > /root/API_KEY.txt
-echo "Der API-Key wurde auch in /root/API_KEY.txt gespeichert."
+echo "Der API-Key wurde in /root/API_KEY.txt gespeichert."
 
 echo "✅ Installation abgeschlossen!"
 echo "📄 Bitte füge folgende Zeile in die /etc/hosts deines Nextcloud-Containers ein (ersetze [Container-IP] durch die tatsächliche IP des Containers):"

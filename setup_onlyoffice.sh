@@ -37,7 +37,7 @@ if [[ -z "$CT_ID" || -z "$CT_NAME" || -z "$TEMPLATE_STORAGE" || -z "$TEMPLATE_PA
     exit 1
 fi
 
-# Vollständiger Template-Pfad (bitte ggf. an deine Umgebung anpassen)
+# Vollständiger Template-Pfad (Passe diesen ggf. an deine Umgebung an)
 TEMPLATE_FULL="/mnt/pve/${TEMPLATE_STORAGE}/template/cache/${TEMPLATE_PATH}"
 
 # Netzwerkkonfiguration zusammensetzen
@@ -120,8 +120,10 @@ EOF
 
 # --- OnlyOffice Document Server installieren ---
 echo "💾 Installiere OnlyOffice Document Server"
+# Setze die Umgebungsvariable ONLYOFFICE_DB_TYPE, damit die Post-Install-Skripte SQLite verwenden
 pct exec $CT_ID -- bash -c "\
 export LANG=en_US.UTF-8 && \
+export ONLYOFFICE_DB_TYPE=sqlite && \
 apt-get update && \
 apt-get install -y gnupg2 wget apt-transport-https ca-certificates jq && \
 wget -qO - https://download.onlyoffice.com/repo/onlyoffice.key | gpg --dearmor > /usr/share/keyrings/onlyoffice-keyring.gpg || \
